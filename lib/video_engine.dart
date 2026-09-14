@@ -13,7 +13,7 @@ class VideoEngine {
         await FFprobeKit.getMediaInformation(audioPath);
 
     final information =
-        await session.getMediaInformation();
+        session.getMediaInformation();
 
     if (information == null) {
       throw Exception(
@@ -33,7 +33,6 @@ class VideoEngine {
     return duration;
   }
 
-  // Старый автоматический режим.
   static List<double> calculateDurations(
     double audioDuration,
     int imageCount,
@@ -86,8 +85,6 @@ class VideoEngine {
         .toList();
   }
 
-  // НОВЫЙ РЕЖИМ:
-  // AI выбирает картинку и точную длительность каждой сцены.
   static Future<String> createVideoFromScenes({
     required List<String> imagePaths,
     required String audioPath,
@@ -101,14 +98,14 @@ class VideoEngine {
     }
 
     if (scenes.isEmpty) {
-      throw Exception('AI не создал план сцен');
+      throw Exception(
+        'AI не создал план сцен',
+      );
     }
 
-    // Получаем настоящую длину озвучки.
     final audioDuration =
         await getAudioDuration(audioPath);
 
-    // Сортируем сцены по времени.
     final sortedScenes =
         List<ScenePlan>.from(scenes)
           ..sort(
@@ -116,7 +113,6 @@ class VideoEngine {
                 a.start.compareTo(b.start),
           );
 
-    // Вычисляем длительность каждой AI-сцены.
     final rawDurations = <double>[];
 
     for (final scene in sortedScenes) {
@@ -138,8 +134,6 @@ class VideoEngine {
       );
     }
 
-    // Нормализуем длительности так,
-    // чтобы видео точно совпало с озвучкой.
     final rawTotal =
         rawDurations.fold<double>(
       0,
@@ -175,17 +169,16 @@ class VideoEngine {
     );
 
     final size =
-        _getVideoSize(format, quality);
+        _getVideoSize(
+      format,
+      quality,
+    );
 
     final segmentFiles = <String>[];
 
     int sceneNumber = 0;
 
-    for (int i = 0;
-        i < sortedScenes.length;
-        i++) {
-      final scene = sortedScenes[i];
-
+    for (final scene in sortedScenes) {
       if (scene.imageIndex < 0 ||
           scene.imageIndex >= imagePaths.length) {
         continue;
@@ -255,7 +248,6 @@ class VideoEngine {
       );
     }
 
-    // Создаём файл для объединения сцен.
     final concatFile =
         '${workDirectory.path}/concat.txt';
 
@@ -274,7 +266,6 @@ class VideoEngine {
       concatContent,
     );
 
-    // Объединяем все AI-сцены.
     final silentVideo =
         '${workDirectory.path}/silent.mp4';
 
@@ -306,7 +297,6 @@ class VideoEngine {
       );
     }
 
-    // Финальный MP4.
     final outputDirectory =
         await getApplicationDocumentsDirectory();
 
@@ -577,4 +567,4 @@ class _VideoSize {
     this.width,
     this.height,
   );
-}ц
+}
