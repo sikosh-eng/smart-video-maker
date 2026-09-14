@@ -1,4 +1,4 @@
-name: Build Android APK
+name: Build Smart Video Maker APK
 
 on:
   workflow_dispatch:
@@ -16,23 +16,26 @@ jobs:
         with:
           channel: stable
 
-      - name: Create Android project
+      - name: Show Flutter version
+        run: flutter --version
+
+      - name: Create Flutter Android project
         run: |
           rm -rf generated_app
           flutter create --platforms=android generated_app
 
-      - name: Copy application files
+      - name: Copy application
         run: |
           rm -rf generated_app/lib
           mkdir -p generated_app/lib
           cp -r lib/* generated_app/lib/
           cp pubspec.yaml generated_app/pubspec.yaml
 
-      - name: Remove default tests
+      - name: Remove generated tests
         run: |
           rm -rf generated_app/test
 
-      - name: Set Android SDK
+      - name: Configure Android SDK
         working-directory: generated_app
         run: |
           python3 - <<'PY'
@@ -51,20 +54,20 @@ jobs:
           path.write_text(text)
           PY
 
-      - name: Get dependencies
+      - name: Get packages
         working-directory: generated_app
         run: flutter pub get
 
-      - name: Analyze project
+      - name: Analyze
         working-directory: generated_app
         run: flutter analyze --no-fatal-warnings --no-fatal-infos
 
-      - name: Build APK
+      - name: Build release APK
         working-directory: generated_app
         run: flutter build apk --release
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Smart-Video-Maker
-          path: generated_app/build/app/outputs/flutter-apk/app-release.apk2
+          name: Smart-Video-Maker-APK
+          path: generated_app/build/app/outputs/flutter-apk/app-release.apk
