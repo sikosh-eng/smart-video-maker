@@ -25,6 +25,13 @@ class SmartVideoMaker extends StatelessWidget {
   }
 }
 
+class HomePage extends StatefulWidget {
+  const HomePage({super.key});
+
+  @override
+  State<HomePage> createState() => _HomePageState();
+}
+
 class _HomePageState extends State<HomePage> {
   List<PlatformFile> images = [];
   PlatformFile? audio;
@@ -48,6 +55,7 @@ class _HomePageState extends State<HomePage> {
     if (result.isNotEmpty) {
       setState(() {
         images = result;
+        status = '';
       });
     }
   }
@@ -61,11 +69,12 @@ class _HomePageState extends State<HomePage> {
     if (result.isNotEmpty) {
       setState(() {
         audio = result.first;
+        status = '';
       });
     }
   }
 
-  Future<void> analyzeWithAI() async {
+  Future<void> createVideoWithAI() async {
     if (apiKey.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -113,6 +122,7 @@ class _HomePageState extends State<HomePage> {
     });
 
     try {
+      // 1. Gemini анализирует озвучку + картинки.
       final result = await AIAnalyzer.analyze(
         apiKey: apiKey,
         audioPath: audioPath,
@@ -122,36 +132,39 @@ class _HomePageState extends State<HomePage> {
       if (!mounted) return;
 
       setState(() {
-        processing = false;
         status =
-            'AI создал ${result.scenes.length} сцен';
+            'AI выбрал ${result.scenes.length} сцен. Создаём видео...';
+      });
+
+      // 2. FFmpeg создаёт видео по плану AI.
+      final outputPath =
+          await VideoEngine.createVideoFromScenes(
+        imagePaths: imagePaths,
+        audioPath: audioPath,
+        scenes: result.scenes,
+        format: format,
+        quality: quality,
+        fps: fps,
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        processing = false;
+        status = 'Видео готово 🎬';
       });
 
       showDialog(
         context: context,
         builder: (context) {
           return AlertDialog(
-            title: const Text('AI-план готов 🤖'),
-            content: SizedBox(
-              width: double.maxFinite,
-              child: ListView.builder(
-                shrinkWrap: true,
-                itemCount: result.scenes.length,
-                itemBuilder: (context, index) {
-                  final scene = result.scenes[index];
-
-                  return Padding(
-                    padding:
-                        const EdgeInsets.only(bottom: 12),
-                    child: Text(
-                      '${scene.start.toStringAsFixed(1)}s → '
-                      '${scene.end.toStringAsFixed(1)}s\n'
-                      'Картинка #${scene.imageIndex + 1}\n'
-                      '${scene.reason}',
-                    ),
-                  );
-                },
-              ),
+            title: const Text(
+              'Видео готово 🎬',
+            ),
+            content: Text(
+              'AI создал ${result.scenes.length} сцен.\n\n'
+              'Видео успешно создано.\n\n'
+              'Файл:\n$outputPath',
             ),
             actions: [
               TextButton(
@@ -169,13 +182,16 @@ class _HomePageState extends State<HomePage> {
 
       setState(() {
         processing = false;
-        status = 'Ошибка AI';
+        status = 'Ошибка создания видео';
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Ошибка AI: $e',
+            'Ошибка:\n$e',
+          ),
+          duration: const Duration(
+            seconds: 10,
           ),
         ),
       );
@@ -200,10 +216,9 @@ class _HomePageState extends State<HomePage> {
           child: Text(
             text,
             style: TextStyle(
-              fontWeight:
-                  selected
-                      ? FontWeight.bold
-                      : FontWeight.normal,
+              fontWeight: selected
+                  ? FontWeight.bold
+                  : FontWeight.normal,
             ),
           ),
         ),
@@ -215,7 +230,9 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Smart Video Maker'),
+        title: const Text(
+          'Smart Video Maker',
+        ),
         centerTitle: true,
       ),
       body: SingleChildScrollView(
@@ -257,13 +274,16 @@ class _HomePageState extends State<HomePage> {
 
             TextField(
               obscureText: true,
+              enabled: !processing,
               onChanged: (value) {
                 apiKey = value;
               },
               decoration: const InputDecoration(
                 labelText: 'Gemini API Key',
                 hintText: 'Вставь свой API ключ',
-                prefixIcon: Icon(Icons.key),
+                prefixIcon: Icon(
+                  Icons.key,
+                ),
                 border: OutlineInputBorder(),
               ),
             ),
@@ -271,7 +291,7 @@ class _HomePageState extends State<HomePage> {
             const SizedBox(height: 12),
 
             const Text(
-              'Ключ используется только для AI-анализа.',
+              'Ключ используется для AI-анализа.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: Colors.grey,
@@ -284,7 +304,9 @@ class _HomePageState extends State<HomePage> {
             ElevatedButton.icon(
               onPressed:
                   processing ? null : selectAudio,
-              icon: const Icon(Icons.mic),
+              icon: const Icon(
+                Icons.mic,
+              ),
               label: Text(
                 audio == null
                     ? 'Добавить озвучку'
@@ -300,8 +322,9 @@ class _HomePageState extends State<HomePage> {
             ElevatedButton.icon(
               onPressed:
                   processing ? null : selectImages,
-              icon:
-                  const Icon(Icons.photo_library),
+              icon: const Icon(
+                Icons.photo_library,
+              ),
               label: Text(
                 images.isEmpty
                     ? 'Добавить картинки'
@@ -327,23 +350,29 @@ class _HomePageState extends State<HomePage> {
                 choice(
                   '9:16',
                   format == '9:16',
-                  () => setState(
-                    () => format = '9:16',
-                  ),
+                  () {
+                    setState(() {
+                      format = '9:16';
+                    });
+                  },
                 ),
                 choice(
                   '16:9',
                   format == '16:9',
-                  () => setState(
-                    () => format = '16:9',
-                  ),
+                  () {
+                    setState(() {
+                      format = '16:9';
+                    });
+                  },
                 ),
                 choice(
                   '1:1',
                   format == '1:1',
-                  () => setState(
-                    () => format = '1:1',
-                  ),
+                  () {
+                    setState(() {
+                      format = '1:1';
+                    });
+                  },
                 ),
               ],
             ),
@@ -363,16 +392,20 @@ class _HomePageState extends State<HomePage> {
                 choice(
                   '720p',
                   quality == '720p',
-                  () => setState(
-                    () => quality = '720p',
-                  ),
+                  () {
+                    setState(() {
+                      quality = '720p';
+                    });
+                  },
                 ),
                 choice(
                   '1080p',
                   quality == '1080p',
-                  () => setState(
-                    () => quality = '1080p',
-                  ),
+                  () {
+                    setState(() {
+                      quality = '1080p';
+                    });
+                  },
                 ),
               ],
             ),
@@ -392,16 +425,20 @@ class _HomePageState extends State<HomePage> {
                 choice(
                   '30 FPS',
                   fps == 30,
-                  () => setState(
-                    () => fps = 30,
-                  ),
+                  () {
+                    setState(() {
+                      fps = 30;
+                    });
+                  },
                 ),
                 choice(
                   '60 FPS',
                   fps == 60,
-                  () => setState(
-                    () => fps = 60,
-                  ),
+                  () {
+                    setState(() {
+                      fps = 60;
+                    });
+                  },
                 ),
               ],
             ),
@@ -410,7 +447,7 @@ class _HomePageState extends State<HomePage> {
 
             ElevatedButton.icon(
               onPressed:
-                  processing ? null : analyzeWithAI,
+                  processing ? null : createVideoWithAI,
               icon: processing
                   ? const SizedBox(
                       width: 20,
@@ -425,8 +462,8 @@ class _HomePageState extends State<HomePage> {
                     ),
               label: Text(
                 processing
-                    ? 'AI АНАЛИЗИРУЕТ...'
-                    : 'АНАЛИЗИРОВАТЬ AI',
+                    ? 'AI СОЗДАЁТ ВИДЕО...'
+                    : 'СОЗДАТЬ AI-ВИДЕО',
               ),
               style: ElevatedButton.styleFrom(
                 padding: const EdgeInsets.all(20),
@@ -439,18 +476,13 @@ class _HomePageState extends State<HomePage> {
               Text(
                 status,
                 textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 14,
+                ),
               ),
           ],
         ),
       ),
     );
   }
-}
-
-class HomePage extends StatefulWidget {
-  const HomePage({super.key});
-
-  @override
-  State<HomePage> createState() =>
-      _HomePageState();
 }
