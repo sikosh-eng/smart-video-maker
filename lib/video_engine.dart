@@ -9,7 +9,9 @@ import 'package:media_store_plus/media_store_plus.dart';
 import 'ai_analyzer.dart';
 
 class VideoEngine {
-  static Future<double> getAudioDuration(String audioPath) async {
+  static Future<double> getAudioDuration(
+    String audioPath,
+  ) async {
     final session =
         await FFprobeKit.getMediaInformation(audioPath);
 
@@ -23,7 +25,9 @@ class VideoEngine {
     }
 
     final duration =
-        double.tryParse(information.getDuration() ?? '');
+        double.tryParse(
+      information.getDuration() ?? '',
+    );
 
     if (duration == null || duration <= 0) {
       throw Exception(
@@ -68,7 +72,10 @@ class VideoEngine {
       }
 
       durations.add(
-        max(0.8, average * multiplier),
+        max(
+          0.8,
+          average * multiplier,
+        ),
       );
     }
 
@@ -82,7 +89,9 @@ class VideoEngine {
         audioDuration / currentTotal;
 
     return durations
-        .map((d) => d * correction)
+        .map(
+          (d) => d * correction,
+        )
         .toList();
   }
 
@@ -131,11 +140,10 @@ class VideoEngine {
 
     final rawDurations = validScenes
         .map(
-          (scene) =>
-              max(
-                0.3,
-                scene.end - scene.start,
-              ),
+          (scene) => max(
+            0.3,
+            scene.end - scene.start,
+          ),
         )
         .toList();
 
@@ -186,9 +194,11 @@ class VideoEngine {
 
     final segmentFiles = <String>[];
 
-    for (int i = 0;
-        i < validScenes.length;
-        i++) {
+    for (
+      int i = 0;
+      i < validScenes.length;
+      i++
+    ) {
       final scene = validScenes[i];
 
       final imagePath =
@@ -331,11 +341,9 @@ class VideoEngine {
       );
     }
 
-    // Сохраняем MP4 в галерею телефона.
-    final galleryPath =
-        await _saveToGallery(finalPath);
-
-    return galleryPath;
+    return await _saveToGallery(
+      finalPath,
+    );
   }
 
   static Future<String> _saveToGallery(
@@ -347,27 +355,22 @@ class VideoEngine {
       final mediaStore =
           MediaStore();
 
-      final fileName =
-          'SmartVideo_${DateTime.now().millisecondsSinceEpoch}.mp4';
-
       final result =
           await mediaStore.saveFile(
         tempFilePath: videoPath,
         dirType: DirType.video,
         dirName: DirName.movies,
-        relativePath:
-            'Smart Video Maker',
-        mimeType: 'video/mp4',
-        fileName: fileName,
+        relativePath: 'Smart Video Maker',
       );
 
-      if (result == null) {
+      if (result == null ||
+          !result.isSuccessful) {
         throw Exception(
-          'MediaStore не вернул сохранённый файл',
+          'MediaStore не смог сохранить видео',
         );
       }
 
-      return 'Галерея → Видео → Smart Video Maker/$fileName';
+      return 'Галерея → Видео → Smart Video Maker/${result.name}';
     } catch (e) {
       throw Exception(
         'Не удалось сохранить видео в галерею: $e',
@@ -416,9 +419,11 @@ class VideoEngine {
 
     final segmentFiles = <String>[];
 
-    for (int i = 0;
-        i < imagePaths.length;
-        i++) {
+    for (
+      int i = 0;
+      i < imagePaths.length;
+      i++
+    ) {
       final output =
           '${workDirectory.path}/segment_$i.mp4';
 
