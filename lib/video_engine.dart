@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
 import 'package:ffmpeg_kit_flutter_new/ffprobe_kit.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:media_store_plus/media_store_plus.dart';
 
 import 'ai_analyzer.dart';
 
@@ -113,26 +114,30 @@ class VideoEngine {
                 a.start.compareTo(b.start),
           );
 
-    final rawDurations = <double>[];
+    final validScenes = sortedScenes
+        .where(
+          (scene) =>
+              scene.imageIndex >= 0 &&
+              scene.imageIndex < imagePaths.length &&
+              scene.end > scene.start,
+        )
+        .toList();
 
-    for (final scene in sortedScenes) {
-      final duration =
-          scene.end - scene.start;
-
-      if (duration <= 0) {
-        continue;
-      }
-
-      rawDurations.add(
-        max(0.3, duration),
-      );
-    }
-
-    if (rawDurations.isEmpty) {
+    if (validScenes.isEmpty) {
       throw Exception(
-        'AI создал некорректные длительности сцен',
+        'AI создал некорректный план сцен',
       );
     }
+
+    final rawDurations = validScenes
+        .map(
+          (scene) =>
+              max(
+                0.3,
+                scene.end - scene.start,
+              ),
+        )
+        .toList();
 
     final rawTotal =
         rawDurations.fold<double>(
@@ -140,16 +145,21 @@ class VideoEngine {
       (a, b) => a + b,
     );
 
+    if (rawTotal <= 0) {
+      throw Exception(
+        'Некорректная длительность сцен',
+      );
+    }
+
     final correction =
         audioDuration / rawTotal;
 
-    final durations =
-        rawDurations
-            .map(
-              (duration) =>
-                  duration * correction,
-            )
-            .toList();
+    final durations = rawDurations
+        .map(
+          (duration) =>
+              duration * correction,
+        )
+        .toList();
 
     final tempDirectory =
         await getTemporaryDirectory();
@@ -176,26 +186,19 @@ class VideoEngine {
 
     final segmentFiles = <String>[];
 
-    int sceneNumber = 0;
-
-    for (final scene in sortedScenes) {
-      if (scene.imageIndex < 0 ||
-          scene.imageIndex >= imagePaths.length) {
-        continue;
-      }
-
-      if (sceneNumber >= durations.length) {
-        break;
-      }
+    for (int i = 0;
+        i < validScenes.length;
+        i++) {
+      final scene = validScenes[i];
 
       final imagePath =
           imagePaths[scene.imageIndex];
 
       final duration =
-          durations[sceneNumber];
+          durations[i];
 
       final output =
-          '${workDirectory.path}/scene_$sceneNumber.mp4';
+          '${workDirectory.path}/scene_$i.mp4';
 
       final command = [
         '-y',
@@ -232,20 +235,11 @@ class VideoEngine {
       if (returnCode == null ||
           !returnCode.isValueSuccess()) {
         throw Exception(
-          'Ошибка создания AI-сцены '
-          '${sceneNumber + 1}',
+          'Ошибка создания сцены ${i + 1}',
         );
       }
 
       segmentFiles.add(output);
-
-      sceneNumber++;
-    }
-
-    if (segmentFiles.isEmpty) {
-      throw Exception(
-        'Не удалось создать ни одной сцены',
-      );
     }
 
     final concatFile =
@@ -293,14 +287,14 @@ class VideoEngine {
     if (concatReturnCode == null ||
         !concatReturnCode.isValueSuccess()) {
       throw Exception(
-        'Не удалось объединить AI-сцены',
+        'Не удалось объединить сцены',
       );
     }
 
     final outputDirectory =
-        await getApplicationDocumentsDirectory();
+        await getTemporaryDirectory();
 
-    final outputPath =
+    final finalPath =
         '${outputDirectory.path}/'
         'smart_video_${DateTime.now().millisecondsSinceEpoch}.mp4';
 
@@ -319,7 +313,7 @@ class VideoEngine {
       '-c:a',
       'aac',
       '-shortest',
-      _quote(outputPath),
+      _quote(finalPath),
     ].join(' ');
 
     final finalSession =
@@ -337,7 +331,48 @@ class VideoEngine {
       );
     }
 
-    return outputPath;
+    // Сохраняем MP4 в галерею телефона.
+    final galleryPath =
+        await _saveToGallery(finalPath);
+
+    return galleryPath;
+  }
+
+  static Future<String> _saveToGallery(
+    String videoPath,
+  ) async {
+    try {
+      await MediaStore.ensureInitialized();
+
+      final mediaStore =
+          MediaStore();
+
+      final fileName =
+          'SmartVideo_${DateTime.now().millisecondsSinceEpoch}.mp4';
+
+      final result =
+          await mediaStore.saveFile(
+        tempFilePath: videoPath,
+        dirType: DirType.video,
+        dirName: DirName.movies,
+        relativePath:
+            'Smart Video Maker',
+        mimeType: 'video/mp4',
+        fileName: fileName,
+      );
+
+      if (result == null) {
+        throw Exception(
+          'MediaStore не вернул сохранённый файл',
+        );
+      }
+
+      return 'Галерея → Видео → Smart Video Maker/$fileName';
+    } catch (e) {
+      throw Exception(
+        'Не удалось сохранить видео в галерею: $e',
+      );
+    }
   }
 
   static Future<String> createVideo({
@@ -348,7 +383,9 @@ class VideoEngine {
     required int fps,
   }) async {
     if (imagePaths.isEmpty) {
-      throw Exception('Не выбраны изображения');
+      throw Exception(
+        'Не выбраны изображения',
+      );
     }
 
     final audioDuration =
@@ -483,9 +520,9 @@ class VideoEngine {
     }
 
     final outputDirectory =
-        await getApplicationDocumentsDirectory();
+        await getTemporaryDirectory();
 
-    final outputPath =
+    final finalPath =
         '${outputDirectory.path}/'
         'smart_video_${DateTime.now().millisecondsSinceEpoch}.mp4';
 
@@ -504,7 +541,7 @@ class VideoEngine {
       '-c:a',
       'aac',
       '-shortest',
-      _quote(outputPath),
+      _quote(finalPath),
     ].join(' ');
 
     final finalSession =
@@ -522,7 +559,9 @@ class VideoEngine {
       );
     }
 
-    return outputPath;
+    return await _saveToGallery(
+      finalPath,
+    );
   }
 
   static String _quote(String path) {
