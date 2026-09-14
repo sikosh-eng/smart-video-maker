@@ -44,6 +44,11 @@ jobs:
           path = Path("android/app/build.gradle.kts")
           text = path.read_text()
 
+          text = text.replace(
+              "compileSdk = flutter.compileSdkVersion",
+              "compileSdk = 36"
+          )
+
           if "compileSdk = 36" not in text:
               text = text.replace(
                   "android {",
@@ -54,17 +59,128 @@ jobs:
           path.write_text(text)
           PY
 
+      - name: Configure all Android modules to compile with SDK 36
+        working-directory: generated_app
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          root = Path(".")
+
+          for path in root.rglob("build.gradle"):
+              text = path.read_text()
+
+              if "compileSdkVersion 33" in text:
+                  text = text.replace(
+                      "compileSdkVersion 33",
+                      "compileSdkVersion 36"
+                  )
+
+              if "compileSdkVersion 34" in text:
+                  text = text.replace(
+                      "compileSdkVersion 34",
+                      "compileSdkVersion 36"
+                  )
+
+              path.write_text(text)
+
+          for path in root.rglob("build.gradle.kts"):
+              text = path.read_text()
+
+              if "compileSdk = 33" in text:
+                  text = text.replace(
+                      "compileSdk = 33",
+                      "compileSdk = 36"
+                  )
+
+              if "compileSdk = 34" in text:
+                  text = text.replace(
+                      "compileSdk = 34",
+                      "compileSdk = 36"
+                  )
+
+              if "compileSdk = flutter.compileSdkVersion" in text:
+                  text = text.replace(
+                      "compileSdk = flutter.compileSdkVersion",
+                      "compileSdk = 36"
+                  )
+
+              path.write_text(text)
+          PY
+
       - name: Get packages
         working-directory: generated_app
         run: flutter pub get
 
+      - name: Force Android plugin compileSdk to 36
+        working-directory: generated_app
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          home = Path.home()
+          pub_cache = home / ".pub-cache"
+
+          for path in pub_cache.rglob("build.gradle"):
+              try:
+                  text = path.read_text()
+              except:
+                  continue
+
+              changed = False
+
+              if "compileSdkVersion 33" in text:
+                  text = text.replace(
+                      "compileSdkVersion 33",
+                      "compileSdkVersion 36"
+                  )
+                  changed = True
+
+              if "compileSdkVersion 34" in text:
+                  text = text.replace(
+                      "compileSdkVersion 34",
+                      "compileSdkVersion 36"
+                  )
+                  changed = True
+
+              if changed:
+                  path.write_text(text)
+
+          for path in pub_cache.rglob("build.gradle.kts"):
+              try:
+                  text = path.read_text()
+              except:
+                  continue
+
+              changed = False
+
+              if "compileSdk = 33" in text:
+                  text = text.replace(
+                      "compileSdk = 33",
+                      "compileSdk = 36"
+                  )
+                  changed = True
+
+              if "compileSdk = 34" in text:
+                  text = text.replace(
+                      "compileSdk = 34",
+                      "compileSdk = 36"
+                  )
+                  changed = True
+
+              if changed:
+                  path.write_text(text)
+          PY
+
       - name: Analyze
         working-directory: generated_app
-        run: flutter analyze --no-fatal-warnings --no-fatal-infos
+        run: |
+          flutter analyze --no-fatal-warnings --no-fatal-infos
 
       - name: Build release APK
         working-directory: generated_app
-        run: flutter build apk --release
+        run: |
+          flutter build apk --release
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
