@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 
+import 'video_engine.dart';
+
 void main() {
   runApp(const SmartVideoMaker());
 }
@@ -38,11 +40,13 @@ class _HomePageState extends State<HomePage> {
   int fps = 30;
 
   bool processing = false;
+  String status = '';
 
   Future<void> selectImages() async {
     final result = await FilePicker.pickFiles(
       type: FileType.image,
       allowMultiple: true,
+      withData: false,
     );
 
     if (result.isNotEmpty) {
@@ -55,6 +59,7 @@ class _HomePageState extends State<HomePage> {
   Future<void> selectAudio() async {
     final result = await FilePicker.pickFiles(
       type: FileType.audio,
+      withData: false,
     );
 
     if (result.isNotEmpty) {
@@ -64,7 +69,7 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  void startCreation() {
+  Future<void> createVideo() async {
     if (images.isEmpty || audio == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -76,33 +81,81 @@ class _HomePageState extends State<HomePage> {
       return;
     }
 
+    final imagePaths = images
+        .map((image) => image.path)
+        .whereType<String>()
+        .toList();
+
+    final audioPath = audio!.path;
+
+    if (imagePaths.length != images.length ||
+        audioPath == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Не удалось получить пути к выбранным файлам',
+          ),
+        ),
+      );
+      return;
+    }
+
     setState(() {
       processing = true;
+      status = 'Анализирую озвучку...';
     });
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          'Подготовка автоматического монтажа...',
-        ),
-      ),
-    );
+    try {
+      final outputPath = await VideoEngine.createVideo(
+        imagePaths: imagePaths,
+        audioPath: audioPath,
+        format: format,
+        quality: quality,
+        fps: fps,
+      );
 
-    Future.delayed(const Duration(seconds: 2), () {
       if (!mounted) return;
 
       setState(() {
         processing = false;
+        status = 'Видео готово!';
+      });
+
+      showDialog(
+        context: context,
+        builder: (context) {
+          return AlertDialog(
+            title: const Text('Готово 🎬'),
+            content: Text(
+              'Видео создано.\n\n$outputPath',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                },
+                child: const Text('ОК'),
+              ),
+            ],
+          );
+        },
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        processing = false;
+        status = 'Ошибка';
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
+        SnackBar(
           content: Text(
-            'Интерфейс готов. Следующим шагом подключаем настоящий монтаж.',
+            'Ошибка: $e',
           ),
         ),
       );
-    });
+    }
   }
 
   Widget choice(
@@ -114,7 +167,7 @@ class _HomePageState extends State<HomePage> {
       child: Padding(
         padding: const EdgeInsets.all(4),
         child: OutlinedButton(
-          onPressed: onTap,
+          onPressed: processing ? null : onTap,
           style: OutlinedButton.styleFrom(
             padding: const EdgeInsets.symmetric(
               vertical: 15,
@@ -176,7 +229,7 @@ class _HomePageState extends State<HomePage> {
             const SizedBox(height: 30),
 
             ElevatedButton.icon(
-              onPressed: selectAudio,
+              onPressed: processing ? null : selectAudio,
               icon: const Icon(Icons.mic),
               label: Text(
                 audio == null
@@ -191,7 +244,7 @@ class _HomePageState extends State<HomePage> {
             const SizedBox(height: 12),
 
             ElevatedButton.icon(
-              onPressed: selectImages,
+              onPressed: processing ? null : selectImages,
               icon: const Icon(Icons.photo_library),
               label: Text(
                 images.isEmpty
@@ -286,7 +339,7 @@ class _HomePageState extends State<HomePage> {
             const SizedBox(height: 35),
 
             ElevatedButton.icon(
-              onPressed: processing ? null : startCreation,
+              onPressed: processing ? null : createVideo,
               icon: processing
                   ? const SizedBox(
                       width: 20,
@@ -308,17 +361,27 @@ class _HomePageState extends State<HomePage> {
 
             const SizedBox(height: 20),
 
-            if (audio != null)
+            if (status.isNotEmpty)
+              Text(
+                status,
+                textAlign: TextAlign.center,
+              ),
+
+            if (audio != null) ...[
+              const SizedBox(height: 10),
               Text(
                 'Озвучка: ${audio!.name}',
                 textAlign: TextAlign.center,
               ),
+            ],
 
-            if (images.isNotEmpty)
+            if (images.isNotEmpty) ...[
+              const SizedBox(height: 5),
               Text(
-                'Выбрано изображений: ${images.length}',
+                'Изображений: ${images.length}',
                 textAlign: TextAlign.center,
               ),
+            ],
           ],
         ),
       ),
